@@ -24,9 +24,9 @@ create policy "herkes okur yazar" on expenses
   for all using (true) with check (true);
 ```
 
-4. Sol menüden **Project Settings → API** bölümüne git ve şu iki değeri kopyala:
+4. Sol menüden **Project Settings → API** (veya **API Keys**) bölümüne git ve şu iki değeri kopyala:
    - **Project URL** (örn. `https://abcdefgh.supabase.co`)
-   - **anon / public** anahtarı (`eyJ...` ile başlayan uzun metin)
+   - API anahtarı: yeni projelerde **publishable** (`sb_publishable_...`), eski projelerde **anon / public** (`eyJ...`). İkisi de çalışır. **Secret/service_role anahtarını kullanma.**
 
 ## 2. Uygulamayı telefonlara kur
 
@@ -34,6 +34,13 @@ create policy "herkes okur yazar" on expenses
 2. Açılan **Kurulum** ekranına 1. adımda kopyaladığın URL ve anon anahtarını yapıştır → **Bağlan**.
 3. Safari'de **Paylaş** düğmesi → **Ana Ekrana Ekle**. Artık normal bir uygulama gibi açılır.
 4. Aynı iki adımı eşinin telefonunda da yap. İkiniz de aynı veritabanına yazarsınız.
+
+## Sorun giderme
+
+- **"Bağlan ve test et"** düğmesi bağlantıyı kaydetmeden önce dener ve sorun varsa nedenini yazar (yanlış anahtar, eksik tablo, eksik RLS politikası...).
+- Ana sayfadaki **⚙️ Bağlantı ayarları** ile bu ekrana her zaman dönebilirsin.
+- iOS'ta Safari ile ana ekrana eklenen uygulama **ayrı bir hafıza** kullanır: bağlantı bilgilerini Safari'de girdiysen, ana ekrandaki uygulamada bir kez daha girmen gerekebilir.
+- "X kayıt gönderilmeyi bekliyor" uyarısına dokunursan bekleyenler tekrar gönderilir; birebir aynı olan kayıtlar teke indirilir.
 
 ## Notlar
 

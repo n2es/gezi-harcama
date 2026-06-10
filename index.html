@@ -59,8 +59,9 @@
   .primary:disabled { opacity: .5; }
 
   .toast { position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%) translateY(20px);
-    background: var(--green); color: #fff; padding: 12px 22px; border-radius: 30px;
-    font-size: 15px; font-weight: 600; opacity: 0; pointer-events: none; transition: all .25s; z-index: 50; }
+    background: var(--green); color: #fff; padding: 12px 22px; border-radius: 16px;
+    font-size: 14px; font-weight: 600; opacity: 0; pointer-events: none; transition: all .25s;
+    z-index: 50; max-width: 90%; width: max-content; text-align: center; }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
   .toast.err { background: var(--red); }
 
@@ -82,7 +83,11 @@
   .empty { text-align: center; color: var(--muted); padding: 30px 0; font-size: 15px; }
 
   .rate-note { text-align: center; color: var(--muted); font-size: 12px; margin-top: 24px; }
-  .pending-note { text-align: center; color: #e8b84a; font-size: 13px; margin-top: 10px; }
+  .pending-note { display: block; width: 100%; background: none; border: 1px solid #5a4a1e;
+    border-radius: 12px; color: #e8b84a; font-size: 13px; margin-top: 10px; padding: 10px; cursor: pointer; }
+  .gear { display: block; margin: 18px auto 0; background: none; border: none;
+    color: var(--muted); font-size: 13px; cursor: pointer; }
+  .setup-err { color: var(--red); font-size: 13px; margin-top: 12px; min-height: 16px; line-height: 1.4; }
 
   .setup-box { background: var(--card); border-radius: var(--radius); padding: 20px; margin-top: 20px; }
   .setup-box p { font-size: 14px; color: var(--muted); line-height: 1.5; }
@@ -103,7 +108,8 @@
     <span>Harcama Kontrol<span class="desc">Gün seç, toplamı gör</span></span>
   </button>
   <p class="rate-note" id="rateNote"></p>
-  <p class="pending-note" id="pendingNote" style="display:none"></p>
+  <button class="pending-note" id="pendingNote" style="display:none" onclick="retryPending()"></button>
+  <button class="gear" onclick="show('setup')">⚙️ Bağlantı ayarları</button>
 </section>
 
 <!-- HARCAMA GİRİŞİ -->
@@ -141,12 +147,13 @@
 <section id="setup" class="screen">
   <h1>Kurulum</h1>
   <div class="setup-box">
-    <p>Ortak veritabanı bağlantısı henüz tanımlı değil. Supabase proje adresini ve anon anahtarını gir (tek seferlik).</p>
+    <p>Supabase proje adresini ve API anahtarını gir (cihaz başına tek seferlik). Anahtarı Supabase'de Project Settings → API bölümünde bulursun.</p>
     <label for="supaUrl">Supabase URL</label>
     <input type="url" id="supaUrl" placeholder="https://xxxx.supabase.co">
-    <label for="supaKey">Anon anahtarı</label>
-    <input type="text" id="supaKey" placeholder="eyJhbGciOi...">
-    <button class="primary" onclick="saveConfig()">Bağlan</button>
+    <label for="supaKey">API anahtarı (anon / publishable)</label>
+    <input type="text" id="supaKey" placeholder="eyJhbGci... veya sb_publishable_...">
+    <div class="setup-err" id="setupErr"></div>
+    <button class="primary" id="connectBtn" onclick="saveConfig()">Bağlan ve test et</button>
   </div>
 </section>
 
@@ -170,6 +177,7 @@ function show(id) {
   $(id).classList.add("active");
   if (id === "entry") { $("entryDate").value = today(); $("entryName").value = ""; $("amount").value = ""; $("usdHint").textContent = ""; }
   if (id === "check") { if (!$("checkDate").value) $("checkDate").value = today(); loadDay(); }
+  if (id === "setup") { $("supaUrl").value = cfg.url; $("supaKey").value = cfg.key; $("setupErr").textContent = ""; }
 }
 
 function today() {
@@ -177,11 +185,24 @@ function today() {
   return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
 }
 
+let toastTimer;
 function toast(msg, isErr) {
   const t = $("toast");
   t.textContent = msg;
   t.className = "toast show" + (isErr ? " err" : "");
-  setTimeout(() => t.className = "toast", 2200);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.className = "toast", isErr ? 5000 : 2200);
+}
+
+// Supabase'in döndürdüğü hatayı anlaşılır Türkçeye çevirir.
+async function httpErrorText(res) {
+  let detail = "";
+  try { const j = await res.json(); detail = j.message || j.hint || ""; } catch (e) {}
+  if (res.status === 401 || res.status === 403)
+    return "Yetki hatası (" + res.status + "): API anahtarı yanlış ya da tabloda izin (RLS) politikası eksik." + (detail ? " — " + detail : "");
+  if (res.status === 404)
+    return "Tablo bulunamadı (404): 'expenses' tablosu yok. Supabase SQL Editor'da kurulum SQL'ini çalıştır.";
+  return "Sunucu hatası (" + res.status + ")" + (detail ? ": " + detail : "");
 }
 
 // ── Sayı biçimleme ────────────────────────────────────────────
@@ -240,51 +261,75 @@ async function saveExpense() {
 
   const row = { date, name, amount };
   $("saveBtn").disabled = true;
+  let res;
   try {
-    const res = await fetch(cfg.url + "/rest/v1/expenses", {
+    res = await fetch(cfg.url + "/rest/v1/expenses", {
       method: "POST", headers: headers(), body: JSON.stringify(row),
     });
-    if (!res.ok) throw new Error(await res.text());
+  } catch (e) {
+    // Ağ hatası: sunucuya hiç ulaşılamadı — kuyruğa al, bağlantı gelince gönderilir.
+    toast(queuePending(row) ? "İnternet yok — kayıt beklemeye alındı" : "Bu kayıt zaten bekleme listesinde", true);
+    $("saveBtn").disabled = false;
+    return;
+  }
+  if (!res.ok) {
+    // Sunucu hatası: tekrar denemek işe yaramaz, asıl sorunu göster.
+    toast(await httpErrorText(res), true);
+  } else {
     toast("Kaydedildi ✓");
     $("entryName").value = ""; $("amount").value = ""; $("usdHint").textContent = "";
     flushPending();
-  } catch (e) {
-    queuePending(row);
-    toast("Bağlantı yok — sonra gönderilecek", true);
   }
   $("saveBtn").disabled = false;
 }
 
 // Çevrimdışı kuyruk: gönderilemeyen kayıtlar saklanır, bağlantı gelince gönderilir.
+const rowKey = (r) => r.date + "|" + r.name + "|" + Number(r.amount);
+
 function queuePending(row) {
   const q = JSON.parse(localStorage.getItem("pendingRows") || "[]");
+  if (q.some(r => rowKey(r) === rowKey(row))) { updatePendingNote(); return false; }
   q.push(row);
   localStorage.setItem("pendingRows", JSON.stringify(q));
   updatePendingNote();
+  return true;
 }
 
 async function flushPending() {
   let q = JSON.parse(localStorage.getItem("pendingRows") || "[]");
-  if (!q.length || !cfg.url) return;
+  if (!q.length || !cfg.url) return null;
+  // Üst üste dokunmadan oluşan birebir aynı kayıtları teke indir.
+  const seen = new Set();
+  q = q.filter(r => { const k = rowKey(r); if (seen.has(k)) return false; seen.add(k); return true; });
   const remaining = [];
+  let lastError = null;
   for (const row of q) {
     try {
       const res = await fetch(cfg.url + "/rest/v1/expenses", {
         method: "POST", headers: headers(), body: JSON.stringify(row),
       });
-      if (!res.ok) remaining.push(row);
-    } catch (e) { remaining.push(row); }
+      if (!res.ok) { remaining.push(row); lastError = await httpErrorText(res); }
+    } catch (e) { remaining.push(row); lastError = "İnternet yok ya da sunucuya ulaşılamıyor."; }
   }
   localStorage.setItem("pendingRows", JSON.stringify(remaining));
   updatePendingNote();
   if (q.length && !remaining.length) toast("Bekleyen kayıtlar gönderildi ✓");
+  return lastError;
+}
+
+async function retryPending() {
+  const n = $("pendingNote");
+  n.disabled = true;
+  const err = await flushPending();
+  n.disabled = false;
+  if (err) toast(err, true);
 }
 
 function updatePendingNote() {
   const q = JSON.parse(localStorage.getItem("pendingRows") || "[]");
   const n = $("pendingNote");
   n.style.display = q.length ? "block" : "none";
-  n.textContent = q.length ? "⏳ " + q.length + " kayıt gönderilmeyi bekliyor" : "";
+  n.textContent = q.length ? "⏳ " + q.length + " kayıt gönderilmeyi bekliyor — göndermek için dokun" : "";
 }
 
 async function loadDay() {
@@ -294,11 +339,12 @@ async function loadDay() {
   list.innerHTML = '<div class="empty">Yükleniyor…</div>';
   try {
     const res = await fetch(cfg.url + "/rest/v1/expenses?date=eq." + date + "&select=*&order=created_at.asc", { headers: headers() });
-    if (!res.ok) throw new Error(await res.text());
+    if (!res.ok) throw new Error(await httpErrorText(res));
     const rows = await res.json();
     renderDay(rows);
   } catch (e) {
-    list.innerHTML = '<div class="empty">Veriler alınamadı. Bağlantını kontrol et.</div>';
+    const msg = e.message && e.message.length > 5 ? e.message : "İnternet yok ya da sunucuya ulaşılamıyor.";
+    list.innerHTML = '<div class="empty">Veriler alınamadı.<br>' + escapeHtml(msg) + '</div>';
     $("dayTotalIdr").textContent = "—";
     $("dayTotalUsd").textContent = "";
   }
@@ -336,15 +382,36 @@ function escapeHtml(s) {
 }
 
 // ── Kurulum ───────────────────────────────────────────────────
-function saveConfig() {
-  const url = $("supaUrl").value.trim().replace(/\/$/, "");
+async function saveConfig() {
+  let url = $("supaUrl").value.trim().replace(/\/+$/, "");
   const key = $("supaKey").value.trim();
-  if (!url || !key) return toast("İki alanı da doldur", true);
+  const errEl = $("setupErr");
+  // Yanlışlıkla dashboard adresi yapıştırıldıysa proje adresine çevir.
+  const dash = url.match(/supabase\.com\/dashboard\/project\/([a-z0-9]{15,25})/);
+  if (dash) url = "https://" + dash[1] + ".supabase.co";
+  if (url && !/^https?:\/\//.test(url)) url = "https://" + url;
+  if (!url || !key) { errEl.textContent = "İki alanı da doldur."; return; }
+
+  $("connectBtn").disabled = true;
+  errEl.textContent = "Bağlantı deneniyor…";
+  try {
+    const res = await fetch(url + "/rest/v1/expenses?select=id&limit=1", {
+      headers: { "apikey": key, "Authorization": "Bearer " + key },
+    });
+    if (!res.ok) { errEl.textContent = "✗ " + await httpErrorText(res); $("connectBtn").disabled = false; return; }
+  } catch (e) {
+    errEl.textContent = "✗ Sunucuya ulaşılamadı. URL'yi ve internet bağlantını kontrol et.";
+    $("connectBtn").disabled = false;
+    return;
+  }
+  $("connectBtn").disabled = false;
+  errEl.textContent = "";
   localStorage.setItem("supaUrl", url);
   localStorage.setItem("supaKey", key);
   cfg.url = url; cfg.key = key;
-  toast("Bağlandı ✓");
+  toast("Bağlantı doğrulandı ✓");
   show("home");
+  flushPending();
 }
 
 // ── Başlangıç ─────────────────────────────────────────────────
