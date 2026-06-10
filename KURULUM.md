@@ -17,6 +17,7 @@ create table expenses (
   amount numeric not null,
   category text,
   entered_by text,
+  note text,
   created_at timestamptz default now()
 );
 
@@ -33,6 +34,7 @@ Sadece şunu çalıştır:
 ```sql
 alter table expenses add column if not exists category text;
 alter table expenses add column if not exists entered_by text;
+alter table expenses add column if not exists note text;
 ```
 
 4. Sol menüden **Project Settings → API** (veya **API Keys**) bölümüne git ve şu iki değeri kopyala:

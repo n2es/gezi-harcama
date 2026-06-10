@@ -159,6 +159,8 @@
     <label>Alt kategori</label>
     <div class="chips" id="subChips"></div>
   </div>
+  <label for="entryNote">Not (isteğe bağlı)</label>
+  <input type="text" id="entryNote" placeholder="Örn. Wat Arun" autocomplete="off">
   <label for="amount">Tutar (IDR)</label>
   <div class="amount-wrap">
     <span class="prefix">Rp</span>
@@ -249,13 +251,14 @@ function show(id) {
     if (rec) {
       $("entryDate").value = rec.date;
       $("entryName").value = rec.name;
+      $("entryNote").value = rec.note || "";
       $("amount").value = Number(rec.amount).toLocaleString("id-ID");
       $("amount").dispatchEvent(new Event("input"));
       selectedCat = rec.category || "Diğer";
       // Kaydın adı bir alt kategoriyle eşleşiyorsa onu seçili getir.
       selectedSub = (SUBCATS[selectedCat] || []).includes(rec.name) ? rec.name : null;
     } else {
-      $("entryDate").value = today(); $("entryName").value = ""; $("amount").value = ""; $("usdHint").textContent = "";
+      $("entryDate").value = today(); $("entryName").value = ""; $("entryNote").value = ""; $("amount").value = ""; $("usdHint").textContent = "";
       selectedCat = localStorage.getItem("lastCat") || "Diğer";
       selectedSub = null;
     }
@@ -391,11 +394,19 @@ function exitEntry() {
 async function updateExpense(row) {
   const id = editingId;
   $("saveBtn").disabled = true;
-  let res;
+  let res, schemaWarnUpd = false;
   try {
     res = await fetch(cfg.url + "/rest/v1/expenses?id=eq." + id, {
       method: "PATCH", headers: headers(), body: JSON.stringify(row),
     });
+    // "note" sütunu henüz yoksa o alan olmadan tekrar dene.
+    if (res.status === 400 && (await res.clone().text()).includes("column")) {
+      const { note, ...rest } = row;
+      res = await fetch(cfg.url + "/rest/v1/expenses?id=eq." + id, {
+        method: "PATCH", headers: headers(), body: JSON.stringify(rest),
+      });
+      schemaWarnUpd = res.ok;
+    }
   } catch (e) {
     toast("İnternet yok — düzenleme kaydedilemedi, tekrar dene", true);
     $("saveBtn").disabled = false;
@@ -403,7 +414,7 @@ async function updateExpense(row) {
   }
   $("saveBtn").disabled = false;
   if (!res.ok) { toast(await httpErrorText(res), true); return; }
-  toast("Güncellendi ✓");
+  toast(schemaWarnUpd ? "Güncellendi — not için KURULUM.md'deki güncelleme SQL'i gerekli" : "Güncellendi ✓", schemaWarnUpd);
   editingId = null;
   $("checkDate").value = row.date;
   show("check");
@@ -455,8 +466,10 @@ async function saveExpense() {
   if (!amount) return toast("Tutar gir", true);
 
   const row = { date, name: normName(name), amount, category: selectedCat };
-  // Düzenleme modunda mevcut kayıt güncellenir; "kim girdi" bilgisine dokunulmaz.
-  if (editingId) return updateExpense(row);
+  const note = $("entryNote").value.trim();
+  // Düzenlemede not her zaman gönderilir ki silinen not da temizlenebilsin.
+  if (editingId) { row.note = note || null; return updateExpense(row); }
+  if (note) row.note = note;
   const who = (localStorage.getItem("deviceName") || "").trim();
   if (who) row.entered_by = who;
   $("saveBtn").disabled = true;
@@ -483,8 +496,8 @@ async function saveExpense() {
     // Sunucu hatası: tekrar denemek işe yaramaz, asıl sorunu göster.
     toast(await httpErrorText(res), true);
   } else {
-    toast(schemaWarn ? "Kaydedildi — kategori için KURULUM.md'deki güncelleme SQL'i gerekli" : "Kaydedildi ✓", schemaWarn);
-    $("entryName").value = ""; $("amount").value = ""; $("usdHint").textContent = "";
+    toast(schemaWarn ? "Kaydedildi — yeni alanlar için KURULUM.md'deki güncelleme SQL'i gerekli" : "Kaydedildi ✓", schemaWarn);
+    $("entryName").value = ""; $("entryNote").value = ""; $("amount").value = ""; $("usdHint").textContent = "";
     flushPending();
   }
   $("saveBtn").disabled = false;
@@ -568,7 +581,7 @@ function renderDay(rows) {
   if (!rows.length) { list.innerHTML = '<div class="empty">Bu gün için kayıt yok.</div>'; return; }
   list.innerHTML = rows.map(r => {
     // Ad zaten kategoriyle aynıysa (örn. "Market") etikette tekrarlama.
-    const meta = [r.category !== r.name ? r.category : null, r.entered_by].filter(Boolean).join(" · ");
+    const meta = [r.category !== r.name ? r.category : null, r.note, r.entered_by].filter(Boolean).join(" · ");
     return `
     <div class="item" onclick="startEdit('${r.id}')">
       <span class="name">${escapeHtml(r.name)}${meta ? `<span class="meta">${escapeHtml(meta)}</span>` : ""}</span>
