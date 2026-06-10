@@ -73,6 +73,16 @@
   .day-row .t small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
   .item .meta { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
 
+  #catChart { background: var(--card); border: 1px solid #2a2f3a; border-radius: var(--radius);
+    padding: 18px; margin-top: 16px; margin-bottom: 16px; display: none; }
+  #catChart.show { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+  .legend { width: 100%; }
+  .legend-row { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 8px; }
+  .legend-row:last-child { margin-bottom: 0; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+  .legend-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .legend-val { color: var(--muted); white-space: nowrap; }
+
   .primary { width: 100%; background: var(--accent); border: none; border-radius: 12px;
     color: #fff; font-size: 17px; font-weight: 600; padding: 16px; margin-top: 28px; cursor: pointer; }
   .primary:active { opacity: .85; }
@@ -179,6 +189,7 @@
       <div class="idr" id="monTotalIdr">Rp 0</div>
       <div class="usd" id="monTotalUsd"></div>
     </div>
+    <div id="catChart"></div>
     <div class="items" id="dayRows"></div>
   </div>
 </section>
@@ -497,7 +508,7 @@ async function loadMonth() {
   const lastDay = new Date(y, m, 0).getDate();
   const from = ym + "-01", to = ym + "-" + String(lastDay).padStart(2, "0");
   try {
-    const res = await fetch(cfg.url + "/rest/v1/expenses?date=gte." + from + "&date=lte." + to + "&select=date,amount", { headers: headers() });
+    const res = await fetch(cfg.url + "/rest/v1/expenses?date=gte." + from + "&date=lte." + to + "&select=date,amount,category", { headers: headers() });
     if (!res.ok) throw new Error(await httpErrorText(res));
     renderMonth(await res.json(), y, m, lastDay);
   } catch (e) {
@@ -508,16 +519,55 @@ async function loadMonth() {
   }
 }
 
+const CAT_COLORS = {
+  "Yemek": "#4f8cff", "Market": "#34c77b", "Ulaşım": "#f5c542", "Konaklama": "#e05252",
+  "Aktivite": "#9b6cf2", "Alışveriş": "#ff8c4f", "Sağlık": "#4fd2e0", "Diğer": "#8b919e",
+};
+
+function renderCatChart(byCat, total) {
+  const el = $("catChart");
+  const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
+  if (!total || !cats.length) { el.className = ""; el.innerHTML = ""; return; }
+
+  const cx = 48, cy = 48, r = 42;
+  let svg = "", angle = -Math.PI / 2;
+  if (cats.length === 1) {
+    svg = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${CAT_COLORS[cats[0][0]] || CAT_COLORS["Diğer"]}"/>`;
+  } else {
+    for (const [cat, sum] of cats) {
+      const slice = (sum / total) * 2 * Math.PI;
+      const x1 = cx + r * Math.cos(angle), y1 = cy + r * Math.sin(angle);
+      angle += slice;
+      const x2 = cx + r * Math.cos(angle), y2 = cy + r * Math.sin(angle);
+      const large = slice > Math.PI ? 1 : 0;
+      svg += `<path d="M${cx},${cy} L${x1.toFixed(2)},${y1.toFixed(2)} A${r},${r} 0 ${large} 1 ${x2.toFixed(2)},${y2.toFixed(2)} Z" fill="${CAT_COLORS[cat] || CAT_COLORS["Diğer"]}" stroke="var(--card)" stroke-width="1.5"/>`;
+    }
+  }
+
+  const legend = cats.map(([cat, sum]) => `
+    <div class="legend-row">
+      <span class="legend-dot" style="background:${CAT_COLORS[cat] || CAT_COLORS["Diğer"]}"></span>
+      <span class="legend-name">${escapeHtml(cat)}</span>
+      <span class="legend-val">${fmtIdr(sum)} · %${Math.round((sum / total) * 100)}</span>
+    </div>`).join("");
+
+  el.className = "show";
+  el.innerHTML = `<svg width="96" height="96" viewBox="0 0 96 96">${svg}</svg><div class="legend">${legend}</div>`;
+}
+
 function renderMonth(rows, y, m, lastDay) {
   const rate = getRate();
-  const byDay = {};
+  const byDay = {}, byCat = {};
   let total = 0;
   for (const r of rows) {
     byDay[r.date] = (byDay[r.date] || 0) + Number(r.amount);
+    const cat = r.category || "Diğer";
+    byCat[cat] = (byCat[cat] || 0) + Number(r.amount);
     total += Number(r.amount);
   }
   $("monTotalIdr").textContent = fmtIdr(total);
   $("monTotalUsd").textContent = rate ? "≈ " + fmtUsd(total / rate) : "";
+  renderCatChart(byCat, total);
   let html = "";
   for (let d = 1; d <= lastDay; d++) {
     const date = y + "-" + String(m).padStart(2, "0") + "-" + String(d).padStart(2, "0");
