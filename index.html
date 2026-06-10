@@ -389,6 +389,8 @@ async function saveConfig() {
   // Yanlışlıkla dashboard adresi yapıştırıldıysa proje adresine çevir.
   const dash = url.match(/supabase\.com\/dashboard\/project\/([a-z0-9]{15,25})/);
   if (dash) url = "https://" + dash[1] + ".supabase.co";
+  // Sonuna /rest/v1 eklenmiş olarak yapıştırıldıysa temizle (uygulama kendisi ekliyor).
+  url = url.replace(/\/rest\/v1\/?$/, "");
   if (url && !/^https?:\/\//.test(url)) url = "https://" + url;
   if (!url || !key) { errEl.textContent = "İki alanı da doldur."; return; }
 
