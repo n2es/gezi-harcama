@@ -149,10 +149,16 @@
   <h1 id="entryTitle">Harcama Girişi</h1>
   <label for="entryDate">Tarih</label>
   <input type="date" id="entryDate">
-  <label for="entryName">Harcama kalemi</label>
-  <input type="text" id="entryName" placeholder="Örn. Akşam yemeği" autocomplete="off">
+  <div id="nameField">
+    <label for="entryName">Harcama kalemi</label>
+    <input type="text" id="entryName" placeholder="Örn. Akşam yemeği" autocomplete="off">
+  </div>
   <label>Kategori</label>
   <div class="chips" id="catChips"></div>
+  <div id="subField" style="display:none">
+    <label>Alt kategori</label>
+    <div class="chips" id="subChips"></div>
+  </div>
   <label for="amount">Tutar (IDR)</label>
   <div class="amount-wrap">
     <span class="prefix">Rp</span>
@@ -239,15 +245,19 @@ function show(id) {
     $("entryTitle").textContent = rec ? "Harcamayı Düzenle" : "Harcama Girişi";
     $("entryBack").textContent = rec ? "‹ Vazgeç" : "‹ Ana Sayfa";
     $("saveBtn").textContent = rec ? "Güncelle" : "Kaydet";
+    $("nameField").style.display = SHOW_NAME_FIELD ? "block" : "none";
     if (rec) {
       $("entryDate").value = rec.date;
       $("entryName").value = rec.name;
       $("amount").value = Number(rec.amount).toLocaleString("id-ID");
       $("amount").dispatchEvent(new Event("input"));
       selectedCat = rec.category || "Diğer";
+      // Kaydın adı bir alt kategoriyle eşleşiyorsa onu seçili getir.
+      selectedSub = (SUBCATS[selectedCat] || []).includes(rec.name) ? rec.name : null;
     } else {
       $("entryDate").value = today(); $("entryName").value = ""; $("amount").value = ""; $("usdHint").textContent = "";
       selectedCat = localStorage.getItem("lastCat") || "Diğer";
+      selectedSub = null;
     }
     renderChips();
   }
@@ -320,19 +330,45 @@ function parseAmount() {
 }
 
 // ── Kategoriler ───────────────────────────────────────────────
+// Serbest metin "Harcama kalemi" alanı: true yapılırsa alan geri gelir,
+// kayıt adı yine elle yazılır. false iken ad, seçilen alt kategoriden gelir.
+const SHOW_NAME_FIELD = false;
+
 const CATS = ["Yemek", "Market", "Ulaşım", "Konaklama", "Aktivite", "Alışveriş", "Sağlık", "Diğer"];
+const SUBCATS = {
+  "Yemek": ["Kahvaltı", "Öğlen Yemeği", "Akşam Yemeği"],
+  "Ulaşım": ["Yakıt", "Motor Kirası", "Uçak", "Tren", "Feribot", "Grab"],
+  "Konaklama": ["Otel", "Ev", "Guesthouse"],
+  "Aktivite": ["Müze", "Tapınak", "Gösteri", "Ören Yeri", "Eğlence"],
+  "Diğer": ["Haberleşme", "Kişisel Bakım", "Vize", "Sigorta"],
+};
 let selectedCat = localStorage.getItem("lastCat") || "Diğer";
+let selectedSub = null;
 
 function renderChips() {
   if (!CATS.includes(selectedCat)) selectedCat = "Diğer";
   $("catChips").innerHTML = CATS.map(c =>
     `<button class="chip${c === selectedCat ? " sel" : ""}" onclick="pickCat('${c}')">${c}</button>`).join("");
+  renderSubChips();
+}
+
+function renderSubChips() {
+  const subs = SUBCATS[selectedCat] || [];
+  $("subField").style.display = subs.length ? "block" : "none";
+  $("subChips").innerHTML = subs.map(s =>
+    `<button class="chip${s === selectedSub ? " sel" : ""}" onclick="pickSub('${s}')">${s}</button>`).join("");
 }
 
 function pickCat(c) {
   selectedCat = c;
+  selectedSub = null;
   localStorage.setItem("lastCat", c);
   renderChips();
+}
+
+function pickSub(s) {
+  selectedSub = s;
+  renderSubChips();
 }
 
 // "yemek", "YEMEK", " yemek " → "Yemek": boşlukları toparla, baş harfi büyüt.
@@ -405,10 +441,17 @@ function headers() {
 
 async function saveExpense() {
   const date = $("entryDate").value;
-  const name = $("entryName").value.trim();
+  let name = $("entryName").value.trim();
   const amount = parseAmount();
   if (!date) return toast("Tarih seç", true);
-  if (!name) return toast("Harcama kalemini yaz", true);
+  if (!SHOW_NAME_FIELD) {
+    // Ad alanı gizliyken: alt kategori seçildiyse o, yoksa eski ad (düzenleme), o da yoksa kategori adı.
+    if (selectedSub) name = selectedSub;
+    if (!name) {
+      if ((SUBCATS[selectedCat] || []).length) return toast("Alt kategori seç", true);
+      name = selectedCat;
+    }
+  } else if (!name) return toast("Harcama kalemini yaz", true);
   if (!amount) return toast("Tutar gir", true);
 
   const row = { date, name: normName(name), amount, category: selectedCat };
@@ -524,7 +567,8 @@ function renderDay(rows) {
   rows.forEach(r => dayCache[r.id] = r);
   if (!rows.length) { list.innerHTML = '<div class="empty">Bu gün için kayıt yok.</div>'; return; }
   list.innerHTML = rows.map(r => {
-    const meta = [r.category, r.entered_by].filter(Boolean).join(" · ");
+    // Ad zaten kategoriyle aynıysa (örn. "Market") etikette tekrarlama.
+    const meta = [r.category !== r.name ? r.category : null, r.entered_by].filter(Boolean).join(" · ");
     return `
     <div class="item" onclick="startEdit('${r.id}')">
       <span class="name">${escapeHtml(r.name)}${meta ? `<span class="meta">${escapeHtml(meta)}</span>` : ""}</span>
