@@ -53,6 +53,26 @@
     color: var(--text); font-size: 17px; padding: 14px 14px 14px 46px; -webkit-appearance: none; }
   .usd-hint { font-size: 13px; color: var(--muted); margin-top: 6px; min-height: 16px; }
 
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .chip { background: var(--card); border: 1px solid #2a2f3a; border-radius: 20px;
+    padding: 9px 15px; font-size: 14px; color: var(--text); cursor: pointer; }
+  .chip.sel { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+
+  .seg { display: flex; background: var(--card); border: 1px solid #2a2f3a;
+    border-radius: 12px; padding: 4px; margin-bottom: 4px; }
+  .seg button { flex: 1; background: none; border: none; border-radius: 9px; padding: 11px;
+    font-size: 15px; color: var(--muted); font-weight: 600; cursor: pointer; }
+  .seg button.sel { background: var(--accent); color: #fff; }
+
+  .day-row { display: flex; justify-content: space-between; align-items: center;
+    background: var(--card); border: 1px solid #2a2f3a; border-radius: 12px;
+    padding: 13px 16px; margin-bottom: 8px; cursor: pointer; }
+  .day-row.zero { opacity: .4; }
+  .day-row .d { font-size: 15px; }
+  .day-row .t { font-weight: 600; font-size: 15px; text-align: right; }
+  .day-row .t small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+  .item .meta { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+
   .primary { width: 100%; background: var(--accent); border: none; border-radius: 12px;
     color: #fff; font-size: 17px; font-weight: 600; padding: 16px; margin-top: 28px; cursor: pointer; }
   .primary:active { opacity: .85; }
@@ -120,6 +140,8 @@
   <input type="date" id="entryDate">
   <label for="entryName">Harcama kalemi</label>
   <input type="text" id="entryName" placeholder="Örn. Akşam yemeği" autocomplete="off">
+  <label>Kategori</label>
+  <div class="chips" id="catChips"></div>
   <label for="amount">Tutar (IDR)</label>
   <div class="amount-wrap">
     <span class="prefix">Rp</span>
@@ -133,18 +155,37 @@
 <section id="check" class="screen">
   <button class="back" onclick="show('home')">‹ Ana Sayfa</button>
   <h1>Harcama Kontrol</h1>
-  <label for="checkDate">Gün seç</label>
-  <input type="date" id="checkDate" onchange="loadDay()">
-  <div class="total-card">
-    <div class="label">Günün toplamı</div>
-    <div class="idr" id="dayTotalIdr">Rp 0</div>
-    <div class="usd" id="dayTotalUsd">$0.00</div>
+  <div class="seg">
+    <button id="segDay" class="sel" onclick="setCheckMode('day')">Gün</button>
+    <button id="segMonth" onclick="setCheckMode('month')">Ay</button>
   </div>
-  <div class="items" id="itemList"></div>
+
+  <div id="dayView">
+    <label for="checkDate">Gün seç</label>
+    <input type="date" id="checkDate" onchange="loadDay()">
+    <div class="total-card">
+      <div class="label">Günün toplamı</div>
+      <div class="idr" id="dayTotalIdr">Rp 0</div>
+      <div class="usd" id="dayTotalUsd">$0.00</div>
+    </div>
+    <div class="items" id="itemList"></div>
+  </div>
+
+  <div id="monthView" style="display:none">
+    <label for="checkMonth">Ay seç</label>
+    <input type="month" id="checkMonth" onchange="loadMonth()">
+    <div class="total-card">
+      <div class="label">Ayın toplamı</div>
+      <div class="idr" id="monTotalIdr">Rp 0</div>
+      <div class="usd" id="monTotalUsd"></div>
+    </div>
+    <div class="items" id="dayRows"></div>
+  </div>
 </section>
 
 <!-- KURULUM (Supabase bilgisi yoksa) -->
 <section id="setup" class="screen">
+  <button class="back" id="setupBack" onclick="show('home')">‹ Ana Sayfa</button>
   <h1>Kurulum</h1>
   <div class="setup-box">
     <p>Supabase proje adresini ve API anahtarını gir (cihaz başına tek seferlik). Anahtarı Supabase'de Project Settings → API bölümünde bulursun.</p>
@@ -152,6 +193,8 @@
     <input type="url" id="supaUrl" placeholder="https://xxxx.supabase.co">
     <label for="supaKey">API anahtarı (anon / publishable)</label>
     <input type="text" id="supaKey" placeholder="eyJhbGci... veya sb_publishable_...">
+    <label for="deviceName">Adın — kayıtlarda "kim girdi" olarak görünür (isteğe bağlı)</label>
+    <input type="text" id="deviceName" placeholder="Örn. Enes" autocomplete="off">
     <div class="setup-err" id="setupErr"></div>
     <button class="primary" id="connectBtn" onclick="saveConfig()">Bağlan ve test et</button>
   </div>
@@ -175,10 +218,36 @@ const $ = (id) => document.getElementById(id);
 function show(id) {
   document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
   $(id).classList.add("active");
-  if (id === "entry") { $("entryDate").value = today(); $("entryName").value = ""; $("amount").value = ""; $("usdHint").textContent = ""; }
-  if (id === "check") { if (!$("checkDate").value) $("checkDate").value = today(); loadDay(); }
-  if (id === "setup") { $("supaUrl").value = cfg.url; $("supaKey").value = cfg.key; $("setupErr").textContent = ""; }
+  if (id === "entry") {
+    $("entryDate").value = today(); $("entryName").value = ""; $("amount").value = ""; $("usdHint").textContent = "";
+    renderChips();
+  }
+  if (id === "check") {
+    if (!$("checkDate").value) $("checkDate").value = today();
+    if (checkMode === "day") loadDay(); else loadMonth();
+  }
+  if (id === "setup") {
+    $("supaUrl").value = cfg.url; $("supaKey").value = cfg.key;
+    $("deviceName").value = localStorage.getItem("deviceName") || "";
+    $("setupErr").textContent = "";
+    // İlk kurulumda dönülecek bir ana ekran yok; geri düğmesini gizle.
+    $("setupBack").style.display = (cfg.url && cfg.key) ? "block" : "none";
+  }
 }
+
+// Sağa kaydırarak ana sayfaya dön (sol kenardan başlayan kaydırmalarda).
+let swipeStart = null;
+document.addEventListener("touchstart", (e) => {
+  const t = e.touches[0];
+  swipeStart = { x: t.clientX, y: t.clientY };
+}, { passive: true });
+document.addEventListener("touchend", (e) => {
+  if (!swipeStart) return;
+  const t = e.changedTouches[0];
+  const dx = t.clientX - swipeStart.x, dy = Math.abs(t.clientY - swipeStart.y);
+  if (swipeStart.x < 60 && dx > 70 && dy < 60 && !$("home").classList.contains("active") && cfg.url && cfg.key) show("home");
+  swipeStart = null;
+}, { passive: true });
 
 function today() {
   const d = new Date();
@@ -221,6 +290,28 @@ function parseAmount() {
   return digits ? Number(digits) : 0;
 }
 
+// ── Kategoriler ───────────────────────────────────────────────
+const CATS = ["Yemek", "Market", "Ulaşım", "Konaklama", "Aktivite", "Alışveriş", "Sağlık", "Diğer"];
+let selectedCat = localStorage.getItem("lastCat") || "Diğer";
+
+function renderChips() {
+  if (!CATS.includes(selectedCat)) selectedCat = "Diğer";
+  $("catChips").innerHTML = CATS.map(c =>
+    `<button class="chip${c === selectedCat ? " sel" : ""}" onclick="pickCat('${c}')">${c}</button>`).join("");
+}
+
+function pickCat(c) {
+  selectedCat = c;
+  localStorage.setItem("lastCat", c);
+  renderChips();
+}
+
+// "yemek", "YEMEK", " yemek " → "Yemek": boşlukları toparla, baş harfi büyüt.
+function normName(s) {
+  s = s.trim().replace(/\s+/g, " ");
+  return s ? s[0].toLocaleUpperCase("tr-TR") + s.slice(1) : s;
+}
+
 // ── Döviz kuru (USD → IDR) ────────────────────────────────────
 function getRate() {
   const cached = JSON.parse(localStorage.getItem("usdIdrRate") || "null");
@@ -259,13 +350,23 @@ async function saveExpense() {
   if (!name) return toast("Harcama kalemini yaz", true);
   if (!amount) return toast("Tutar gir", true);
 
-  const row = { date, name, amount };
+  const row = { date, name: normName(name), amount, category: selectedCat };
+  const who = (localStorage.getItem("deviceName") || "").trim();
+  if (who) row.entered_by = who;
   $("saveBtn").disabled = true;
-  let res;
+  let res, schemaWarn = false;
   try {
     res = await fetch(cfg.url + "/rest/v1/expenses", {
       method: "POST", headers: headers(), body: JSON.stringify(row),
     });
+    // Veritabanında yeni sütunlar henüz yoksa eski biçimle tekrar dene.
+    if (res.status === 400 && (await res.clone().text()).includes("column")) {
+      res = await fetch(cfg.url + "/rest/v1/expenses", {
+        method: "POST", headers: headers(),
+        body: JSON.stringify({ date: row.date, name: row.name, amount: row.amount }),
+      });
+      schemaWarn = res.ok;
+    }
   } catch (e) {
     // Ağ hatası: sunucuya hiç ulaşılamadı — kuyruğa al, bağlantı gelince gönderilir.
     toast(queuePending(row) ? "İnternet yok — kayıt beklemeye alındı" : "Bu kayıt zaten bekleme listesinde", true);
@@ -276,7 +377,7 @@ async function saveExpense() {
     // Sunucu hatası: tekrar denemek işe yaramaz, asıl sorunu göster.
     toast(await httpErrorText(res), true);
   } else {
-    toast("Kaydedildi ✓");
+    toast(schemaWarn ? "Kaydedildi — kategori için KURULUM.md'deki güncelleme SQL'i gerekli" : "Kaydedildi ✓", schemaWarn);
     $("entryName").value = ""; $("amount").value = ""; $("usdHint").textContent = "";
     flushPending();
   }
@@ -357,14 +458,83 @@ function renderDay(rows) {
   $("dayTotalUsd").textContent = rate ? "≈ " + fmtUsd(total / rate) : "";
   const list = $("itemList");
   if (!rows.length) { list.innerHTML = '<div class="empty">Bu gün için kayıt yok.</div>'; return; }
-  list.innerHTML = rows.map(r => `
+  list.innerHTML = rows.map(r => {
+    const meta = [r.category, r.entered_by].filter(Boolean).join(" · ");
+    return `
     <div class="item">
-      <span class="name">${escapeHtml(r.name)}</span>
+      <span class="name">${escapeHtml(r.name)}${meta ? `<span class="meta">${escapeHtml(meta)}</span>` : ""}</span>
       <span class="right">
         <span class="amt">${fmtIdr(Number(r.amount))}${rate ? `<small>≈ ${fmtUsd(Number(r.amount) / rate)}</small>` : ""}</span>
         <button class="del" onclick="delExpense('${r.id}')" aria-label="Sil">✕</button>
       </span>
-    </div>`).join("");
+    </div>`;
+  }).join("");
+}
+
+// ── Ay görünümü ───────────────────────────────────────────────
+let checkMode = "day";
+
+function setCheckMode(m) {
+  checkMode = m;
+  $("segDay").classList.toggle("sel", m === "day");
+  $("segMonth").classList.toggle("sel", m === "month");
+  $("dayView").style.display = m === "day" ? "block" : "none";
+  $("monthView").style.display = m === "month" ? "block" : "none";
+  if (m === "month") {
+    if (!$("checkMonth").value) $("checkMonth").value = today().slice(0, 7);
+    loadMonth();
+  } else {
+    loadDay();
+  }
+}
+
+async function loadMonth() {
+  const ym = $("checkMonth").value;
+  if (!ym) return;
+  const rowsEl = $("dayRows");
+  rowsEl.innerHTML = '<div class="empty">Yükleniyor…</div>';
+  const [y, m] = ym.split("-").map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  const from = ym + "-01", to = ym + "-" + String(lastDay).padStart(2, "0");
+  try {
+    const res = await fetch(cfg.url + "/rest/v1/expenses?date=gte." + from + "&date=lte." + to + "&select=date,amount", { headers: headers() });
+    if (!res.ok) throw new Error(await httpErrorText(res));
+    renderMonth(await res.json(), y, m, lastDay);
+  } catch (e) {
+    const msg = e.message && e.message.length > 5 ? e.message : "İnternet yok ya da sunucuya ulaşılamıyor.";
+    rowsEl.innerHTML = '<div class="empty">Veriler alınamadı.<br>' + escapeHtml(msg) + '</div>';
+    $("monTotalIdr").textContent = "—";
+    $("monTotalUsd").textContent = "";
+  }
+}
+
+function renderMonth(rows, y, m, lastDay) {
+  const rate = getRate();
+  const byDay = {};
+  let total = 0;
+  for (const r of rows) {
+    byDay[r.date] = (byDay[r.date] || 0) + Number(r.amount);
+    total += Number(r.amount);
+  }
+  $("monTotalIdr").textContent = fmtIdr(total);
+  $("monTotalUsd").textContent = rate ? "≈ " + fmtUsd(total / rate) : "";
+  let html = "";
+  for (let d = 1; d <= lastDay; d++) {
+    const date = y + "-" + String(m).padStart(2, "0") + "-" + String(d).padStart(2, "0");
+    const sum = byDay[date] || 0;
+    const label = new Date(y, m - 1, d).toLocaleDateString("tr-TR", { day: "numeric", month: "long", weekday: "short" });
+    html += `
+    <div class="day-row${sum ? "" : " zero"}" onclick="openDay('${date}')">
+      <span class="d">${label}</span>
+      <span class="t">${fmtIdr(sum)}${sum && rate ? `<small>≈ ${fmtUsd(sum / rate)}</small>` : ""}</span>
+    </div>`;
+  }
+  $("dayRows").innerHTML = html;
+}
+
+function openDay(date) {
+  $("checkDate").value = date;
+  setCheckMode("day");
 }
 
 async function delExpense(id) {
@@ -410,6 +580,7 @@ async function saveConfig() {
   errEl.textContent = "";
   localStorage.setItem("supaUrl", url);
   localStorage.setItem("supaKey", key);
+  localStorage.setItem("deviceName", $("deviceName").value.trim());
   cfg.url = url; cfg.key = key;
   toast("Bağlantı doğrulandı ✓");
   show("home");
@@ -417,10 +588,7 @@ async function saveConfig() {
 }
 
 // ── Başlangıç ─────────────────────────────────────────────────
-if (!cfg.url || !cfg.key) {
-  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
-  $("setup").classList.add("active");
-}
+if (!cfg.url || !cfg.key) show("setup");
 refreshRate();
 updatePendingNote();
 flushPending();

@@ -15,6 +15,8 @@ create table expenses (
   date date not null,
   name text not null,
   amount numeric not null,
+  category text,
+  entered_by text,
   created_at timestamptz default now()
 );
 
@@ -22,6 +24,15 @@ alter table expenses enable row level security;
 
 create policy "herkes okur yazar" on expenses
   for all using (true) with check (true);
+```
+
+### Mevcut kurulumu güncelleme (tabloyu daha önce oluşturduysan)
+
+Sadece şunu çalıştır:
+
+```sql
+alter table expenses add column if not exists category text;
+alter table expenses add column if not exists entered_by text;
 ```
 
 4. Sol menüden **Project Settings → API** (veya **API Keys**) bölümüne git ve şu iki değeri kopyala:
