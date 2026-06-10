@@ -104,7 +104,8 @@
   .items { margin-top: 16px; }
   .item { display: flex; align-items: center; justify-content: space-between;
     background: var(--card); border: 1px solid #2a2f3a; border-radius: 12px;
-    padding: 14px 16px; margin-bottom: 10px; }
+    padding: 14px 16px; margin-bottom: 10px; cursor: pointer; }
+  .item:active { background: var(--card2); }
   .item .name { font-size: 16px; }
   .item .right { display: flex; align-items: center; gap: 12px; }
   .item .amt { font-size: 16px; font-weight: 600; white-space: nowrap; }
@@ -144,8 +145,8 @@
 
 <!-- HARCAMA GİRİŞİ -->
 <section id="entry" class="screen">
-  <button class="back" onclick="show('home')">‹ Ana Sayfa</button>
-  <h1>Harcama Girişi</h1>
+  <button class="back" id="entryBack" onclick="exitEntry()">‹ Ana Sayfa</button>
+  <h1 id="entryTitle">Harcama Girişi</h1>
   <label for="entryDate">Tarih</label>
   <input type="date" id="entryDate">
   <label for="entryName">Harcama kalemi</label>
@@ -226,11 +227,28 @@ const cfg = {
 
 const $ = (id) => document.getElementById(id);
 
+let editingId = null;
+let dayCache = {};
+
 function show(id) {
+  if (id !== "entry") editingId = null;
   document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
   $(id).classList.add("active");
   if (id === "entry") {
-    $("entryDate").value = today(); $("entryName").value = ""; $("amount").value = ""; $("usdHint").textContent = "";
+    const rec = editingId ? dayCache[editingId] : null;
+    $("entryTitle").textContent = rec ? "Harcamayı Düzenle" : "Harcama Girişi";
+    $("entryBack").textContent = rec ? "‹ Vazgeç" : "‹ Ana Sayfa";
+    $("saveBtn").textContent = rec ? "Güncelle" : "Kaydet";
+    if (rec) {
+      $("entryDate").value = rec.date;
+      $("entryName").value = rec.name;
+      $("amount").value = Number(rec.amount).toLocaleString("id-ID");
+      $("amount").dispatchEvent(new Event("input"));
+      selectedCat = rec.category || "Diğer";
+    } else {
+      $("entryDate").value = today(); $("entryName").value = ""; $("amount").value = ""; $("usdHint").textContent = "";
+      selectedCat = localStorage.getItem("lastCat") || "Diğer";
+    }
     renderChips();
   }
   if (id === "check") {
@@ -323,6 +341,38 @@ function normName(s) {
   return s ? s[0].toLocaleUpperCase("tr-TR") + s.slice(1) : s;
 }
 
+// ── Kayıt düzenleme ───────────────────────────────────────────
+function startEdit(id) {
+  if (!dayCache[id]) return;
+  editingId = id;
+  show("entry");
+}
+
+function exitEntry() {
+  show(editingId ? "check" : "home");
+}
+
+async function updateExpense(row) {
+  const id = editingId;
+  $("saveBtn").disabled = true;
+  let res;
+  try {
+    res = await fetch(cfg.url + "/rest/v1/expenses?id=eq." + id, {
+      method: "PATCH", headers: headers(), body: JSON.stringify(row),
+    });
+  } catch (e) {
+    toast("İnternet yok — düzenleme kaydedilemedi, tekrar dene", true);
+    $("saveBtn").disabled = false;
+    return;
+  }
+  $("saveBtn").disabled = false;
+  if (!res.ok) { toast(await httpErrorText(res), true); return; }
+  toast("Güncellendi ✓");
+  editingId = null;
+  $("checkDate").value = row.date;
+  show("check");
+}
+
 // ── Döviz kuru (USD → IDR) ────────────────────────────────────
 function getRate() {
   const cached = JSON.parse(localStorage.getItem("usdIdrRate") || "null");
@@ -362,6 +412,8 @@ async function saveExpense() {
   if (!amount) return toast("Tutar gir", true);
 
   const row = { date, name: normName(name), amount, category: selectedCat };
+  // Düzenleme modunda mevcut kayıt güncellenir; "kim girdi" bilgisine dokunulmaz.
+  if (editingId) return updateExpense(row);
   const who = (localStorage.getItem("deviceName") || "").trim();
   if (who) row.entered_by = who;
   $("saveBtn").disabled = true;
@@ -468,15 +520,17 @@ function renderDay(rows) {
   $("dayTotalIdr").textContent = fmtIdr(total);
   $("dayTotalUsd").textContent = rate ? "≈ " + fmtUsd(total / rate) : "";
   const list = $("itemList");
+  dayCache = {};
+  rows.forEach(r => dayCache[r.id] = r);
   if (!rows.length) { list.innerHTML = '<div class="empty">Bu gün için kayıt yok.</div>'; return; }
   list.innerHTML = rows.map(r => {
     const meta = [r.category, r.entered_by].filter(Boolean).join(" · ");
     return `
-    <div class="item">
+    <div class="item" onclick="startEdit('${r.id}')">
       <span class="name">${escapeHtml(r.name)}${meta ? `<span class="meta">${escapeHtml(meta)}</span>` : ""}</span>
       <span class="right">
         <span class="amt">${fmtIdr(Number(r.amount))}${rate ? `<small>≈ ${fmtUsd(Number(r.amount) / rate)}</small>` : ""}</span>
-        <button class="del" onclick="delExpense('${r.id}')" aria-label="Sil">✕</button>
+        <button class="del" onclick="event.stopPropagation(); delExpense('${r.id}')" aria-label="Sil">✕</button>
       </span>
     </div>`;
   }).join("");
