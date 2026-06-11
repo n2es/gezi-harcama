@@ -143,6 +143,10 @@
     border-radius: 12px; color: #e8b84a; font-size: 13px; margin-top: 10px; padding: 10px; cursor: pointer; }
   .gear { display: block; margin: 18px auto 0; background: none; border: none;
     color: var(--muted); font-size: 13px; cursor: pointer; }
+  .home-hero { margin-top: 36px; text-align: center; }
+  .home-hero img { width: 60%; max-width: 220px; height: auto; display: block; margin: 0 auto; }
+  .home-hero .names { color: var(--muted); font-size: 13px; font-weight: 600;
+    letter-spacing: .5px; margin-top: 10px; }
   .setup-err { color: var(--red); font-size: 13px; margin-top: 12px; min-height: 16px; line-height: 1.4; }
 
   .setup-box { background: var(--card); border-radius: var(--radius); padding: 20px; margin-top: 20px; }
@@ -171,6 +175,10 @@
   <p class="rate-note" id="rateNote"></p>
   <button class="pending-note" id="pendingNote" style="display:none" onclick="retryPending()"></button>
   <button class="gear" onclick="show('setup')">⚙️ Ayarlar</button>
+  <div class="home-hero">
+    <img src="couple.png" alt="Enes & Merve" loading="lazy">
+    <div class="names">Enes &amp; Merve</div>
+  </div>
 </section>
 
 <!-- HARCAMA GİRİŞİ -->
