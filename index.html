@@ -88,6 +88,14 @@
   .day-row .t small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
   .item .meta { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
 
+  .stats-card { background: var(--card); border: 1px solid #2a2f3a; border-radius: var(--radius);
+    padding: 6px 18px; margin-top: 16px; }
+  .stat-row { display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    padding: 12px 0; border-bottom: 1px solid #232733; font-size: 14px; }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-label { color: var(--muted); }
+  .stat-val { font-weight: 600; text-align: right; white-space: nowrap; }
+
   #catChart { background: var(--card); border: 1px solid #2a2f3a; border-radius: var(--radius);
     padding: 18px; margin-top: 16px; margin-bottom: 16px; display: none; }
   #catChart.show { display: flex; flex-direction: column; align-items: center; gap: 16px; }
@@ -233,6 +241,7 @@
       <div class="idr" id="monTotalIdr">Rp 0</div>
       <div class="usd" id="monTotalUsd"></div>
     </div>
+    <div id="monthStats"></div>
     <div id="catChart"></div>
     <div class="items" id="dayRows"></div>
   </div>
@@ -783,6 +792,7 @@ function renderMonth(rows, y, m, lastDay) {
     catTotal += v;
   }
   renderCatChart(catOk ? byCat : {}, catOk ? catTotal : 0, monthCur);
+  renderMonthStats(rows, monthCur, catTotal, byCat, y, m, lastDay, catOk);
 
   const byDay = {};
   for (const r of rows) (byDay[r.date] = byDay[r.date] || []).push(r);
@@ -807,6 +817,48 @@ function renderMonth(rows, y, m, lastDay) {
 function openDay(date) {
   $("checkDate").value = date;
   setCheckMode("day");
+}
+
+// ── Ay özeti ──────────────────────────────────────────────────
+const statRow = (l, v) => `<div class="stat-row"><span class="stat-label">${l}</span><span class="stat-val">${v}</span></div>`;
+
+function renderMonthStats(rows, monthCur, sumAll, byCat, y, m, lastDay, valuesOk) {
+  const el = $("monthStats");
+  if (!rows.length || !valuesOk || !sumAll) { el.innerHTML = ""; return; }
+  const fmtV = (v) => monthCur ? fmtMoney(v, monthCur) : fmtUsd(v);
+
+  // Gün bazlı toplamlar (ayla aynı değer tabanında: yerel ya da USD)
+  const dayVals = {};
+  for (const r of rows) {
+    const v = monthCur ? Number(r.amount) : usdOf(r);
+    dayVals[r.date] = (dayVals[r.date] || 0) + v;
+  }
+  const entryDays = Object.keys(dayVals).length;
+  const avg = sumAll / entryDays;
+
+  let maxDate = null, maxVal = -1;
+  for (const [d, v] of Object.entries(dayVals)) if (v > maxVal) { maxVal = v; maxDate = d; }
+  const maxLabel = new Date(maxDate + "T00:00:00").toLocaleDateString("tr-TR", { day: "numeric", month: "long" });
+
+  const top = Object.entries(byCat).sort((a, b) => b[1] - a[1])[0];
+
+  // Ay sonu tahmini: yalnızca içinde bulunulan ayda anlamlı.
+  // Mevcut toplam + kalan günler × günlük ortalama.
+  let projRow = "";
+  const ym = y + "-" + String(m).padStart(2, "0");
+  if (ym === today().slice(0, 7)) {
+    const elapsed = Number(today().slice(8, 10));
+    const proj = sumAll + avg * Math.max(0, lastDay - elapsed);
+    projRow = statRow("Bu hızla ay sonu tahmini", fmtV(proj));
+  }
+
+  el.innerHTML = `<div class="stats-card">
+    ${statRow("Günlük ortalama", fmtV(avg))}
+    ${projRow}
+    ${statRow("En pahalı gün", maxLabel + " · " + fmtV(maxVal))}
+    ${statRow("En çok harcanan kategori", escapeHtml(top[0]) + " · %" + Math.round((top[1] / sumAll) * 100))}
+    ${statRow("Harcama girilen gün", entryDays + " / " + lastDay)}
+  </div>`;
 }
 
 async function delExpense(id) {
