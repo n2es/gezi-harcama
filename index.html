@@ -46,9 +46,13 @@
     width: 100%; background: var(--card); border: 1px solid #2a2f3a; border-radius: 12px;
     color: var(--text); font-size: 17px; padding: 14px; appearance: none; -webkit-appearance: none; }
   input[type="date"] { min-height: 50px; }
-  .amount-wrap { position: relative; }
+  .amount-row { display: flex; gap: 10px; }
+  .amount-wrap { position: relative; flex: 1; }
   .amount-wrap .prefix { position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
     color: var(--muted); font-size: 17px; }
+  #entryCur { background: var(--card); border: 1px solid #2a2f3a; border-radius: 12px;
+    color: var(--text); font-size: 16px; font-weight: 600; padding: 0 12px;
+    appearance: none; -webkit-appearance: none; }
   #amount { width: 100%; background: var(--card); border: 1px solid #2a2f3a; border-radius: 12px;
     color: var(--text); font-size: 17px; padding: 14px 14px 14px 46px; -webkit-appearance: none; }
   .usd-hint { font-size: 13px; color: var(--muted); margin-top: 6px; min-height: 16px; }
@@ -161,10 +165,13 @@
   </div>
   <label for="entryNote">Not (isteğe bağlı)</label>
   <input type="text" id="entryNote" placeholder="Örn. Wat Arun" autocomplete="off">
-  <label for="amount">Tutar (IDR)</label>
-  <div class="amount-wrap">
-    <span class="prefix">Rp</span>
-    <input type="text" id="amount" inputmode="numeric" placeholder="150.000" autocomplete="off">
+  <label for="amount">Tutar</label>
+  <div class="amount-row">
+    <div class="amount-wrap">
+      <span class="prefix" id="curPrefix">Rp</span>
+      <input type="text" id="amount" inputmode="numeric" placeholder="150.000" autocomplete="off">
+    </div>
+    <select id="entryCur" onchange="curChanged()"></select>
   </div>
   <div class="usd-hint" id="usdHint"></div>
   <button class="primary" id="saveBtn" onclick="saveExpense()">Kaydet</button>
@@ -249,19 +256,23 @@ function show(id) {
     $("saveBtn").textContent = rec ? "Güncelle" : "Kaydet";
     $("nameField").style.display = SHOW_NAME_FIELD ? "block" : "none";
     if (rec) {
+      activeCur = rec.currency || "IDR";
       $("entryDate").value = rec.date;
       $("entryName").value = rec.name;
       $("entryNote").value = rec.note || "";
       $("amount").value = Number(rec.amount).toLocaleString("id-ID");
-      $("amount").dispatchEvent(new Event("input"));
       selectedCat = rec.category || "Diğer";
       // Kaydın adı bir alt kategoriyle eşleşiyorsa onu seçili getir.
       selectedSub = (SUBCATS[selectedCat] || []).includes(rec.name) ? rec.name : null;
     } else {
+      activeCur = localStorage.getItem("activeCur") || "IDR";
       $("entryDate").value = today(); $("entryName").value = ""; $("entryNote").value = ""; $("amount").value = ""; $("usdHint").textContent = "";
       selectedCat = localStorage.getItem("lastCat") || "Diğer";
       selectedSub = null;
     }
+    $("entryCur").value = activeCur;
+    $("curPrefix").textContent = CURRENCIES[activeCur];
+    $("amount").dispatchEvent(new Event("input"));
     renderChips();
   }
   if (id === "check") {
@@ -316,15 +327,35 @@ async function httpErrorText(res) {
   return "Sunucu hatası (" + res.status + ")" + (detail ? ": " + detail : "");
 }
 
-// ── Sayı biçimleme ────────────────────────────────────────────
-const fmtIdr = (n) => "Rp " + Math.round(n).toLocaleString("id-ID");
+// ── Para birimleri ve sayı biçimleme ──────────────────────────
+const CURRENCIES = {
+  IDR: "Rp", VND: "₫", JPY: "¥", THB: "฿", MYR: "RM",
+  SGD: "S$", KRW: "₩", USD: "$", EUR: "€", TRY: "₺",
+};
+let activeCur = localStorage.getItem("activeCur") || "IDR";
+
+const fmtMoney = (n, cur) => (CURRENCIES[cur] || cur) + " " + Math.round(n).toLocaleString("id-ID");
+const fmtIdr = (n) => fmtMoney(n, "IDR");
 const fmtUsd = (n) => "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function initCurSelect() {
+  $("entryCur").innerHTML = Object.keys(CURRENCIES).map(c => `<option value="${c}">${c}</option>`).join("");
+  $("entryCur").value = activeCur;
+  $("curPrefix").textContent = CURRENCIES[activeCur];
+}
+
+function curChanged() {
+  activeCur = $("entryCur").value;
+  localStorage.setItem("activeCur", activeCur);
+  $("curPrefix").textContent = CURRENCIES[activeCur];
+  $("amount").dispatchEvent(new Event("input"));
+}
 
 $("amount").addEventListener("input", (e) => {
   const digits = e.target.value.replace(/\D/g, "");
   e.target.value = digits ? Number(digits).toLocaleString("id-ID") : "";
-  const rate = getRate();
-  $("usdHint").textContent = digits && rate ? "≈ " + fmtUsd(Number(digits) / rate) : "";
+  const rt = rateFor(activeCur);
+  $("usdHint").textContent = digits && rt && activeCur !== "USD" ? "≈ " + fmtUsd(Number(digits) / rt) : "";
 });
 
 function parseAmount() {
@@ -399,9 +430,9 @@ async function updateExpense(row) {
     res = await fetch(cfg.url + "/rest/v1/expenses?id=eq." + id, {
       method: "PATCH", headers: headers(), body: JSON.stringify(row),
     });
-    // "note" sütunu henüz yoksa o alan olmadan tekrar dene.
+    // Yeni sütunlar (note/currency/usd) henüz yoksa onlarsız tekrar dene.
     if (res.status === 400 && (await res.clone().text()).includes("column")) {
-      const { note, ...rest } = row;
+      const { note, currency, usd, ...rest } = row;
       res = await fetch(cfg.url + "/rest/v1/expenses?id=eq." + id, {
         method: "PATCH", headers: headers(), body: JSON.stringify(rest),
       });
@@ -420,25 +451,54 @@ async function updateExpense(row) {
   show("check");
 }
 
-// ── Döviz kuru (USD → IDR) ────────────────────────────────────
-function getRate() {
-  const cached = JSON.parse(localStorage.getItem("usdIdrRate") || "null");
-  return cached ? cached.rate : null;
+// ── Döviz kurları (USD bazlı, tüm para birimleri tek istekte) ─
+function rateFor(cur) {
+  if (cur === "USD") return 1;
+  const c = JSON.parse(localStorage.getItem("fxRates") || "null");
+  return c && c.rates && c.rates[cur] ? c.rates[cur] : null;
 }
 
 async function refreshRate() {
   try {
     const res = await fetch("https://open.er-api.com/v6/latest/USD");
     const data = await res.json();
-    if (data && data.rates && data.rates.IDR) {
-      localStorage.setItem("usdIdrRate", JSON.stringify({ rate: data.rates.IDR, at: Date.now() }));
-    }
-  } catch (e) { /* çevrimdışı — son bilinen kur kullanılır */ }
-  const cached = JSON.parse(localStorage.getItem("usdIdrRate") || "null");
-  $("rateNote").textContent = cached
-    ? "Kur: 1 USD ≈ Rp " + Math.round(cached.rate).toLocaleString("id-ID") +
-      " (" + new Date(cached.at).toLocaleDateString("tr-TR") + ")"
-    : "Kur bilgisi henüz alınamadı.";
+    if (data && data.rates) localStorage.setItem("fxRates", JSON.stringify({ rates: data.rates, at: Date.now() }));
+  } catch (e) { /* çevrimdışı — son bilinen kurlar kullanılır */ }
+  const c = JSON.parse(localStorage.getItem("fxRates") || "null");
+  $("rateNote").textContent = c && c.rates[activeCur]
+    ? "Kur: 1 USD ≈ " + fmtMoney(c.rates[activeCur], activeCur) + " (" + new Date(c.at).toLocaleDateString("tr-TR") + ")"
+    : (activeCur === "USD" ? "" : "Kur bilgisi henüz alınamadı.");
+}
+
+// Kaydın USD karşılığı: kayıt anında yazılan değer; eski kayıtlarda güncel kurdan hesap.
+function usdOf(r) {
+  if (r.usd != null) return Number(r.usd);
+  const rt = rateFor(r.currency || "IDR");
+  return rt ? Number(r.amount) / rt : null;
+}
+
+function totalsOf(rows) {
+  const byCur = {};
+  let usd = 0, usdKnown = true;
+  for (const r of rows) {
+    const c = r.currency || "IDR";
+    byCur[c] = (byCur[c] || 0) + Number(r.amount);
+    const u = usdOf(r);
+    if (u == null) usdKnown = false; else usd += u;
+  }
+  return { byCur, curs: Object.keys(byCur), usd, usdKnown };
+}
+
+// Tek para birimi: yerel toplam + ≈$. Karışık: $ toplam + para birimi dağılımı.
+function renderTotal(mainId, subId, t, zeroCur) {
+  if (!t.curs.length) { $(mainId).textContent = fmtMoney(0, zeroCur); $(subId).textContent = ""; return; }
+  if (t.curs.length === 1) {
+    $(mainId).textContent = fmtMoney(t.byCur[t.curs[0]], t.curs[0]);
+    $(subId).textContent = t.usdKnown && t.curs[0] !== "USD" ? "≈ " + fmtUsd(t.usd) : "";
+  } else {
+    $(mainId).textContent = t.usdKnown ? fmtUsd(t.usd) : "—";
+    $(subId).textContent = t.curs.map(c => fmtMoney(t.byCur[c], c)).join("  +  ");
+  }
 }
 
 // ── Supabase REST ─────────────────────────────────────────────
@@ -465,7 +525,15 @@ async function saveExpense() {
   } else if (!name) return toast("Harcama kalemini yaz", true);
   if (!amount) return toast("Tutar gir", true);
 
-  const row = { date, name: normName(name), amount, category: selectedCat };
+  const row = { date, name: normName(name), amount, category: selectedCat, currency: activeCur };
+  // USD karşılığı kayıt anındaki kurla yazılır; tutar/birim değişmediyse eski değer korunur.
+  const rec0 = editingId ? dayCache[editingId] : null;
+  if (rec0 && Number(rec0.amount) === amount && (rec0.currency || "IDR") === activeCur) {
+    row.usd = rec0.usd != null ? Number(rec0.usd) : null;
+  } else {
+    const rt = rateFor(activeCur);
+    row.usd = rt ? Math.round((amount / rt) * 100) / 100 : null;
+  }
   const note = $("entryNote").value.trim();
   // Düzenlemede not her zaman gönderilir ki silinen not da temizlenebilsin.
   if (editingId) { row.note = note || null; return updateExpense(row); }
@@ -571,10 +639,7 @@ async function loadDay() {
 }
 
 function renderDay(rows) {
-  const rate = getRate();
-  const total = rows.reduce((s, r) => s + Number(r.amount), 0);
-  $("dayTotalIdr").textContent = fmtIdr(total);
-  $("dayTotalUsd").textContent = rate ? "≈ " + fmtUsd(total / rate) : "";
+  renderTotal("dayTotalIdr", "dayTotalUsd", totalsOf(rows), activeCur);
   const list = $("itemList");
   dayCache = {};
   rows.forEach(r => dayCache[r.id] = r);
@@ -582,11 +647,13 @@ function renderDay(rows) {
   list.innerHTML = rows.map(r => {
     // Ad zaten kategoriyle aynıysa (örn. "Market") etikette tekrarlama.
     const meta = [r.category !== r.name ? r.category : null, r.note, r.entered_by].filter(Boolean).join(" · ");
+    const cur = r.currency || "IDR";
+    const u = usdOf(r);
     return `
     <div class="item" onclick="startEdit('${r.id}')">
       <span class="name">${escapeHtml(r.name)}${meta ? `<span class="meta">${escapeHtml(meta)}</span>` : ""}</span>
       <span class="right">
-        <span class="amt">${fmtIdr(Number(r.amount))}${rate ? `<small>≈ ${fmtUsd(Number(r.amount) / rate)}</small>` : ""}</span>
+        <span class="amt">${fmtMoney(Number(r.amount), cur)}${u != null && cur !== "USD" ? `<small>≈ ${fmtUsd(u)}</small>` : ""}</span>
         <button class="del" onclick="event.stopPropagation(); delExpense('${r.id}')" aria-label="Sil">✕</button>
       </span>
     </div>`;
@@ -619,7 +686,7 @@ async function loadMonth() {
   const lastDay = new Date(y, m, 0).getDate();
   const from = ym + "-01", to = ym + "-" + String(lastDay).padStart(2, "0");
   try {
-    const res = await fetch(cfg.url + "/rest/v1/expenses?date=gte." + from + "&date=lte." + to + "&select=date,amount,category", { headers: headers() });
+    const res = await fetch(cfg.url + "/rest/v1/expenses?date=gte." + from + "&date=lte." + to + "&select=*", { headers: headers() });
     if (!res.ok) throw new Error(await httpErrorText(res));
     renderMonth(await res.json(), y, m, lastDay);
   } catch (e) {
@@ -635,8 +702,9 @@ const CAT_COLORS = {
   "Aktivite": "#9b6cf2", "Alışveriş": "#ff8c4f", "Sağlık": "#4fd2e0", "Diğer": "#8b919e",
 };
 
-function renderCatChart(byCat, total) {
+function renderCatChart(byCat, total, cur) {
   const el = $("catChart");
+  const fmtV = (v) => cur ? fmtMoney(v, cur) : fmtUsd(v);
   const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
   if (!total || !cats.length) { el.className = ""; el.innerHTML = ""; return; }
 
@@ -659,7 +727,7 @@ function renderCatChart(byCat, total) {
     <div class="legend-row">
       <span class="legend-dot" style="background:${CAT_COLORS[cat] || CAT_COLORS["Diğer"]}"></span>
       <span class="legend-name">${escapeHtml(cat)}</span>
-      <span class="legend-val">${fmtIdr(sum)} · %${Math.round((sum / total) * 100)}</span>
+      <span class="legend-val">${fmtV(sum)} · %${Math.round((sum / total) * 100)}</span>
     </div>`).join("");
 
   el.className = "show";
@@ -667,27 +735,37 @@ function renderCatChart(byCat, total) {
 }
 
 function renderMonth(rows, y, m, lastDay) {
-  const rate = getRate();
-  const byDay = {}, byCat = {};
-  let total = 0;
+  const t = totalsOf(rows);
+  renderTotal("monTotalIdr", "monTotalUsd", t, activeCur);
+  const monthCur = t.curs.length === 1 ? t.curs[0] : null;
+
+  // Kategori dağılımı: ay tek para birimliyse yerel tutarla, karışıksa USD ile.
+  const byCat = {};
+  let catTotal = 0, catOk = true;
   for (const r of rows) {
-    byDay[r.date] = (byDay[r.date] || 0) + Number(r.amount);
+    const v = monthCur ? Number(r.amount) : usdOf(r);
+    if (v == null) { catOk = false; continue; }
     const cat = r.category || "Diğer";
-    byCat[cat] = (byCat[cat] || 0) + Number(r.amount);
-    total += Number(r.amount);
+    byCat[cat] = (byCat[cat] || 0) + v;
+    catTotal += v;
   }
-  $("monTotalIdr").textContent = fmtIdr(total);
-  $("monTotalUsd").textContent = rate ? "≈ " + fmtUsd(total / rate) : "";
-  renderCatChart(byCat, total);
+  renderCatChart(catOk ? byCat : {}, catOk ? catTotal : 0, monthCur);
+
+  const byDay = {};
+  for (const r of rows) (byDay[r.date] = byDay[r.date] || []).push(r);
   let html = "";
   for (let d = 1; d <= lastDay; d++) {
     const date = y + "-" + String(m).padStart(2, "0") + "-" + String(d).padStart(2, "0");
-    const sum = byDay[date] || 0;
+    const dt = totalsOf(byDay[date] || []);
     const label = new Date(y, m - 1, d).toLocaleDateString("tr-TR", { day: "numeric", month: "long", weekday: "short" });
+    let val;
+    if (!dt.curs.length) val = fmtMoney(0, monthCur || activeCur);
+    else if (dt.curs.length === 1) val = fmtMoney(dt.byCur[dt.curs[0]], dt.curs[0]) + (dt.usdKnown && dt.curs[0] !== "USD" ? `<small>≈ ${fmtUsd(dt.usd)}</small>` : "");
+    else val = (dt.usdKnown ? fmtUsd(dt.usd) : "—") + `<small>${dt.curs.length} para birimi</small>`;
     html += `
-    <div class="day-row${sum ? "" : " zero"}" onclick="openDay('${date}')">
+    <div class="day-row${dt.curs.length ? "" : " zero"}" onclick="openDay('${date}')">
       <span class="d">${label}</span>
-      <span class="t">${fmtIdr(sum)}${sum && rate ? `<small>≈ ${fmtUsd(sum / rate)}</small>` : ""}</span>
+      <span class="t">${val}</span>
     </div>`;
   }
   $("dayRows").innerHTML = html;
@@ -750,6 +828,7 @@ async function saveConfig() {
 
 // ── Başlangıç ─────────────────────────────────────────────────
 if (!cfg.url || !cfg.key) show("setup");
+initCurSelect();
 refreshRate();
 updatePendingNote();
 flushPending();

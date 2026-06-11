@@ -18,6 +18,8 @@ create table expenses (
   category text,
   entered_by text,
   note text,
+  currency text default 'IDR',
+  usd numeric,
   created_at timestamptz default now()
 );
 
@@ -35,6 +37,11 @@ Sadece şunu çalıştır:
 alter table expenses add column if not exists category text;
 alter table expenses add column if not exists entered_by text;
 alter table expenses add column if not exists note text;
+alter table expenses add column if not exists currency text default 'IDR';
+alter table expenses add column if not exists usd numeric;
+
+-- Eski IDR kayıtlarına USD karşılığı yaz (Notion dönemindeki ortalama kur: 16.500)
+update expenses set usd = round(amount / 16500.0, 2) where usd is null and currency = 'IDR';
 ```
 
 4. Sol menüden **Project Settings → API** (veya **API Keys**) bölümüne git ve şu iki değeri kopyala:
