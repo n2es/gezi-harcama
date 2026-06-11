@@ -30,13 +30,17 @@
   h1 { font-size: 26px; font-weight: 700; margin: 12px 0 4px; }
   .sub { color: var(--muted); font-size: 14px; margin: 0 0 28px; }
 
-  .bigbtn { display: flex; align-items: center; gap: 16px; width: 100%;
+  .home-title { text-align: center; margin: 20px 0 28px; }
+
+  .bigbtn { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%;
     background: var(--card); border: 1px solid #2a2f3a; border-radius: var(--radius);
-    padding: 22px 20px; margin-bottom: 16px; color: var(--text); font-size: 18px;
-    font-weight: 600; cursor: pointer; text-align: left; }
+    padding: 24px 20px; margin-bottom: 16px; color: var(--text); cursor: pointer; text-align: center; }
   .bigbtn:active { background: var(--card2); }
-  .bigbtn .emoji { font-size: 28px; }
-  .bigbtn .desc { display: block; font-size: 13px; font-weight: 400; color: var(--muted); margin-top: 3px; }
+  .bigbtn .icon { width: 48px; height: 48px; border-radius: 14px; margin-bottom: 4px;
+    background: rgba(79, 140, 255, .15); color: var(--accent);
+    display: flex; align-items: center; justify-content: center; }
+  .bigbtn .btn-title { font-size: 18px; font-weight: 600; }
+  .bigbtn .desc { font-size: 13px; font-weight: 400; color: var(--muted); }
 
   .back { background: none; border: none; color: var(--accent); font-size: 16px;
     padding: 0; margin-bottom: 8px; cursor: pointer; }
@@ -132,15 +136,20 @@
 
 <!-- ANA SAYFA -->
 <section id="home" class="screen active">
-  <h1>Gezi Harcama 🧳</h1>
-  <p class="sub">Günlük harcamaları kaydetme ve görüntüleme</p>
+  <h1 class="home-title">Harcama Takipçisi</h1>
   <button class="bigbtn" onclick="show('entry')">
-    <span class="emoji">✏️</span>
-    <span>Harcama Girişi<span class="desc">Yeni bir harcama kaydet</span></span>
+    <span class="icon">
+      <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+    </span>
+    <span class="btn-title">Harcama Girişi</span>
+    <span class="desc">Yeni bir harcama kaydet</span>
   </button>
   <button class="bigbtn" onclick="show('check')">
-    <span class="emoji">📊</span>
-    <span>Harcama Kontrol<span class="desc">Gün seç, toplamı gör</span></span>
+    <span class="icon">
+      <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+    </span>
+    <span class="btn-title">Harcama Kontrol</span>
+    <span class="desc">Gün seç, toplamı gör</span>
   </button>
   <p class="rate-note" id="rateNote"></p>
   <button class="pending-note" id="pendingNote" style="display:none" onclick="retryPending()"></button>
