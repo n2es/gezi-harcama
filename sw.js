@@ -1,5 +1,5 @@
-const CACHE = "gezi-harcama-v13";
-const SHELL = ["./", "index.html", "manifest.webmanifest", "icon-180.png", "icon-512.png", "couple.png"];
+const CACHE = "gezi-harcama-v14";
+const SHELL = ["./", "index.html", "manifest.webmanifest", "icon-180.png", "icon-512.png", "couple1.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));

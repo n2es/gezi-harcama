@@ -30,7 +30,14 @@
   h1 { font-size: 26px; font-weight: 700; margin: 12px 0 4px; }
   .sub { color: var(--muted); font-size: 14px; margin: 0 0 28px; }
 
-  .home-title { text-align: center; margin: 20px 0 28px; }
+  .home-title { text-align: center; margin: 20px 0 20px; }
+
+  .home-summary:not(:empty) { display: flex; gap: 12px; margin-bottom: 24px; }
+  .sum-tile { flex: 1; background: var(--card); border: 1px solid #2a2f3a; border-radius: var(--radius);
+    padding: 16px 12px; text-align: center; }
+  .sum-tile .l { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .7px; color: var(--muted); }
+  .sum-tile .v { font-size: 18px; font-weight: 700; margin-top: 7px; }
+  .sum-tile .s { font-size: 12px; color: var(--green); margin-top: 3px; min-height: 15px; }
 
   .bigbtn { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%;
     background: var(--card); border: 1px solid #2a2f3a; border-radius: var(--radius);
@@ -158,6 +165,7 @@
 <!-- ANA SAYFA -->
 <section id="home" class="screen active">
   <h1 class="home-title">Harcama Takipçisi</h1>
+  <div class="home-summary" id="homeSummary"></div>
   <button class="bigbtn" onclick="show('entry')">
     <span class="icon">
       <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
@@ -325,6 +333,7 @@ function show(id) {
     $("amount").dispatchEvent(new Event("input"));
     renderChips();
   }
+  if (id === "home") loadHomeSummary();
   if (id === "check") {
     if (!$("checkDate").value) $("checkDate").value = today();
     if (checkMode === "day") loadDay(); else loadMonth();
@@ -540,14 +549,47 @@ function totalsOf(rows) {
 }
 
 // Tek para birimi: yerel toplam + ≈$. Karışık: $ toplam + para birimi dağılımı.
-function renderTotal(mainId, subId, t, zeroCur) {
-  if (!t.curs.length) { $(mainId).textContent = fmtMoney(0, zeroCur); $(subId).textContent = ""; return; }
+// totalsOf sonucundan gösterilecek ana/alt metni üretir (tek/karışık para birimi).
+function summaryText(t, zeroCur) {
+  if (!t.curs.length) return { main: fmtMoney(0, zeroCur), sub: "" };
   if (t.curs.length === 1) {
-    $(mainId).textContent = fmtMoney(t.byCur[t.curs[0]], t.curs[0]);
-    $(subId).textContent = t.usdKnown && t.curs[0] !== "USD" ? "≈ " + fmtUsd(t.usd) : "";
-  } else {
-    $(mainId).textContent = t.usdKnown ? fmtUsd(t.usd) : "—";
-    $(subId).textContent = t.curs.map(c => fmtMoney(t.byCur[c], c)).join("  +  ");
+    return {
+      main: fmtMoney(t.byCur[t.curs[0]], t.curs[0]),
+      sub: t.usdKnown && t.curs[0] !== "USD" ? "≈ " + fmtUsd(t.usd) : "",
+    };
+  }
+  return {
+    main: t.usdKnown ? fmtUsd(t.usd) : "—",
+    sub: t.curs.map(c => fmtMoney(t.byCur[c], c)).join("  +  "),
+  };
+}
+
+function renderTotal(mainId, subId, t, zeroCur) {
+  const s = summaryText(t, zeroCur);
+  $(mainId).textContent = s.main;
+  $(subId).textContent = s.sub;
+}
+
+// ── Ana sayfa özeti: Bugün + Bu Ay ────────────────────────────
+const sumTile = (label, s) =>
+  `<div class="sum-tile"><div class="l">${label}</div><div class="v">${s.main}</div><div class="s">${s.sub || "&nbsp;"}</div></div>`;
+
+async function loadHomeSummary() {
+  const el = $("homeSummary");
+  if (!cfg.url || !cfg.key) { el.innerHTML = ""; return; }
+  const t = today(), ym = t.slice(0, 7);
+  const [y, m] = ym.split("-").map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  const from = ym + "-01", to = ym + "-" + String(lastDay).padStart(2, "0");
+  try {
+    const res = await fetch(cfg.url + "/rest/v1/expenses?date=gte." + from + "&date=lte." + to + "&select=date,amount,currency,usd", { headers: headers() });
+    if (!res.ok) throw new Error();
+    const rows = await res.json();
+    const dayT = totalsOf(rows.filter(r => r.date === t));
+    const monT = totalsOf(rows);
+    el.innerHTML = sumTile("Bugün", summaryText(dayT, activeCur)) + sumTile("Bu Ay", summaryText(monT, activeCur));
+  } catch (e) {
+    el.innerHTML = ""; // çevrimdışı/hata: özeti sessizce gizle, ana ekran sade kalsın
   }
 }
 
@@ -615,7 +657,10 @@ async function saveExpense() {
     toast(await httpErrorText(res), true);
   } else {
     toast(schemaWarn ? "Kaydedildi — yeni alanlar için KURULUM.md'deki güncelleme SQL'i gerekli" : "Kaydedildi ✓", schemaWarn);
+    // Peş peşe hızlı giriş: tutar/not temizlenir, alt kategori sıfırlanır;
+    // tarih, para birimi ve kategori korunur — bir sonraki kaleme hazır kal.
     $("entryName").value = ""; $("entryNote").value = ""; $("amount").value = ""; $("usdHint").textContent = "";
+    selectedSub = null; renderChips();
     flushPending();
   }
   $("saveBtn").disabled = false;
@@ -925,6 +970,7 @@ initCurSelect();
 refreshRate();
 updatePendingNote();
 flushPending();
+if (cfg.url && cfg.key) loadHomeSummary(); // açılışta ana ekran zaten aktif
 window.addEventListener("online", flushPending);
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
