@@ -41,7 +41,7 @@
 
   .bigbtn { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%;
     background: var(--card); border: 1px solid #2a2f3a; border-radius: var(--radius);
-    padding: 24px 20px; margin-bottom: 16px; color: var(--text); cursor: pointer; text-align: center; }
+    padding: 18px 20px; margin-bottom: 14px; color: var(--text); cursor: pointer; text-align: center; }
   .bigbtn:active { background: var(--card2); }
   .bigbtn .icon { width: 48px; height: 48px; border-radius: 14px; margin-bottom: 4px;
     background: rgba(79, 140, 255, .15); color: var(--accent);
@@ -150,10 +150,15 @@
     border-radius: 12px; color: #e8b84a; font-size: 13px; margin-top: 10px; padding: 10px; cursor: pointer; }
   .gear { display: block; margin: 18px auto 0; background: none; border: none;
     color: var(--muted); font-size: 13px; cursor: pointer; }
-  .home-hero { margin-top: 36px; text-align: center; }
-  .home-hero img { width: 60%; max-width: 220px; height: auto; display: block; margin: 0 auto; }
-  .home-hero .names { color: var(--muted); font-size: 13px; font-weight: 600;
-    letter-spacing: .5px; margin-top: 10px; }
+  /* Ana ekran: viewport'a sığar, kaydırılmaz. Couple görseli kalan boşluğa göre
+     otomatik küçülerek alta sabitlenir — her telefon yüksekliğinde sığar. */
+  #home.screen.active { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; padding-bottom: 16px; }
+  .home-hero { flex: 1 1 0; min-height: 0; padding-top: 12px;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
+  .home-hero img { max-width: 120px; max-height: 100%; width: auto; height: auto;
+    object-fit: contain; min-height: 0; flex: 0 1 auto; }
+  .home-hero .names { flex: 0 0 auto; color: var(--muted); font-size: 13px; font-weight: 600;
+    letter-spacing: .5px; margin-top: 8px; }
   .setup-err { color: var(--red); font-size: 13px; margin-top: 12px; min-height: 16px; line-height: 1.4; }
 
   .setup-box { background: var(--card); border-radius: var(--radius); padding: 20px; margin-top: 20px; }
