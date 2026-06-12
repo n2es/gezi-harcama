@@ -24,13 +24,15 @@
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; }
-  body { min-height: 100vh; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+  body { min-height: 100vh; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); overscroll-behavior-y: none; }
+  body.home-fixed { overflow: hidden; }
   .screen { display: none; max-width: 480px; margin: 0 auto; padding: 24px 20px 40px; }
   .screen.active { display: block; }
   h1 { font-size: 26px; font-weight: 700; margin: 12px 0 4px; }
   .sub { color: var(--muted); font-size: 14px; margin: 0 0 28px; }
 
-  .home-title { text-align: center; margin: 20px 0 20px; }
+  .home-logo { display: block; width: 60px; height: auto; margin: 4px auto 0; }
+  .home-title { text-align: center; margin: 8px 0 18px; }
 
   .home-summary:not(:empty) { display: flex; gap: 12px; margin-bottom: 24px; }
   .sum-tile { flex: 1; background: var(--card); border: 1px solid #2a2f3a; border-radius: var(--radius);
@@ -152,7 +154,11 @@
     color: var(--muted); font-size: 13px; cursor: pointer; }
   /* Ana ekran: viewport'a sığar, kaydırılmaz. Couple görseli kalan boşluğa göre
      otomatik küçülerek alta sabitlenir — her telefon yüksekliğinde sığar. */
-  #home.screen.active { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; padding-bottom: 16px; }
+  /* safe-area (çentik/ana çubuk) gövde padding'inde; home yüksekliği bunu düşerek
+     tam ekranı doldurur — böylece gövde taşmaz ve ana ekran kaydırılamaz. */
+  #home.screen.active { display: flex; flex-direction: column;
+    height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    overflow: hidden; padding-bottom: 16px; }
   .home-hero { flex: 1 1 0; min-height: 0; padding-top: 12px;
     display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
   .home-hero img { max-width: 120px; max-height: 100%; width: auto; height: auto;
@@ -169,6 +175,7 @@
 
 <!-- ANA SAYFA -->
 <section id="home" class="screen active">
+  <img class="home-logo" src="logo.png" alt="">
   <h1 class="home-title">Harcama Takipçisi</h1>
   <div class="home-summary" id="homeSummary"></div>
   <button class="bigbtn" onclick="show('entry')">
@@ -312,6 +319,8 @@ function show(id) {
   if (id !== "entry") editingId = null;
   document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
   $(id).classList.add("active");
+  // Ana ekran kaydırılamaz olsun; diğer ekranlar normal kaydırılsın.
+  document.body.classList.toggle("home-fixed", id === "home");
   if (id === "entry") {
     const rec = editingId ? dayCache[editingId] : null;
     $("entryTitle").textContent = rec ? "Harcamayı Düzenle" : "Harcama Girişi";
