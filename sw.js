@@ -1,4 +1,4 @@
-const CACHE = "gezi-harcama-v16";
+const CACHE = "gezi-harcama-v17";
 const SHELL = ["./", "index.html", "manifest.webmanifest", "icon-180.png", "icon-512.png", "couple1.png", "logo.png"];
 
 self.addEventListener("install", (e) => {
