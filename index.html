@@ -452,13 +452,16 @@ function parseAmount() {
 // kayıt adı yine elle yazılır. false iken ad, seçilen alt kategoriden gelir.
 const SHOW_NAME_FIELD = false;
 
-const CATS = ["Yemek", "Market", "Ulaşım", "Konaklama", "Aktivite", "Alışveriş", "Sağlık", "Diğer"];
+const CATS = ["Yeme-İçme", "Market", "Ulaşım", "Konaklama", "Gezi & Aktivite", "Alışveriş", "Sağlık", "Diğer"];
 const SUBCATS = {
-  "Yemek": ["Kahvaltı", "Öğlen Yemeği", "Akşam Yemeği"],
-  "Ulaşım": ["Yakıt", "Motor Kirası", "Uçak", "Tren", "Feribot", "Grab"],
-  "Konaklama": ["Otel", "Ev", "Guesthouse"],
-  "Aktivite": ["Müze", "Tapınak", "Gösteri", "Ören Yeri", "Eğlence"],
-  "Diğer": ["Haberleşme", "Kişisel Bakım", "Vize", "Sigorta"],
+  "Yeme-İçme": ["Restoran", "Kafe", "Sokak Yemeği", "Market Atıştırmalık", "Alkol"],
+  "Market": ["Gıda", "Su/İçecek", "Temizlik", "Kişisel Bakım", "Ev İhtiyacı"],
+  "Ulaşım": ["Taksi/Grab", "Toplu Taşıma", "Motor/Araba Kiralama", "Yakıt", "Otopark/Geçiş"],
+  "Konaklama": ["Otel/Airbnb", "Depozito", "Elektrik/Su", "Çamaşır", "Diğer"],
+  "Gezi & Aktivite": ["Müze/Giriş", "Tur", "Etkinlik", "Plaj/Doğa", "Spor"],
+  "Alışveriş": ["Kıyafet", "Ayakkabı", "Elektronik", "Hediyelik", "Ekipman"],
+  "Sağlık": ["Eczane", "Doktor/Hastane", "Sigorta", "Takviye/Vitamin"],
+  "Diğer": ["Telefon/İnternet", "Vize/Belge", "Banka/Komisyon", "Bahşiş", "Diğer"],
 };
 let selectedCat = localStorage.getItem("lastCat") || "Diğer";
 let selectedSub = null;
@@ -826,8 +829,10 @@ async function loadMonth() {
 }
 
 const CAT_COLORS = {
-  "Yemek": "#4f8cff", "Market": "#34c77b", "Ulaşım": "#f5c542", "Konaklama": "#e05252",
-  "Aktivite": "#9b6cf2", "Alışveriş": "#ff8c4f", "Sağlık": "#4fd2e0", "Diğer": "#8b919e",
+  "Yeme-İçme": "#4f8cff", "Market": "#34c77b", "Ulaşım": "#f5c542", "Konaklama": "#e05252",
+  "Gezi & Aktivite": "#9b6cf2", "Alışveriş": "#ff8c4f", "Sağlık": "#4fd2e0", "Diğer": "#8b919e",
+  // Eski kayıtların (Nisan/Mayıs) renkleri bozulmasın diye eski isimler de korunuyor:
+  "Yemek": "#4f8cff", "Aktivite": "#9b6cf2",
 };
 
 function renderCatChart(byCat, total, cur) {
