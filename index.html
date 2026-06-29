@@ -623,6 +623,13 @@ async function loadHomeSummary() {
   const el = $("homeSummary");
   if (!cfg.url || !cfg.key) { el.innerHTML = ""; return; }
   const t = today(), ym = t.slice(0, 7);
+  // 1) ANINDA: son bilinen özeti göster (aynı ay ise) — kutucuklar beklemeden gelir.
+  let shownCache = false;
+  try {
+    const c = JSON.parse(localStorage.getItem("homeSummaryCache") || "null");
+    if (c && c.ym === ym && c.html) { el.innerHTML = c.html; shownCache = true; }
+  } catch (e) {}
+  // 2) ARKA PLANDA: güncel veriyi çek ve kutucukları tazele.
   const [y, m] = ym.split("-").map(Number);
   const lastDay = new Date(y, m, 0).getDate();
   const from = ym + "-01", to = ym + "-" + String(lastDay).padStart(2, "0");
@@ -632,10 +639,12 @@ async function loadHomeSummary() {
     const rows = await res.json();
     const dayT = totalsOf(rows.filter(r => r.date === t));
     const monT = totalsOf(rows);
-    el.innerHTML = sumTile("Bugün", summaryText(dayT, activeCur), "openCheck('day')")
-                 + sumTile("Bu Ay", summaryText(monT, activeCur), "openCheck('month')");
+    const html = sumTile("Bugün", summaryText(dayT, activeCur), "openCheck('day')")
+               + sumTile("Bu Ay", summaryText(monT, activeCur), "openCheck('month')");
+    el.innerHTML = html;
+    localStorage.setItem("homeSummaryCache", JSON.stringify({ ym, html }));
   } catch (e) {
-    el.innerHTML = ""; // çevrimdışı/hata: özeti sessizce gizle, ana ekran sade kalsın
+    if (!shownCache) el.innerHTML = ""; // veri ve önbellek yok → sade kal
   }
 }
 

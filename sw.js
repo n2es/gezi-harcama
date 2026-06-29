@@ -1,4 +1,4 @@
-const CACHE = "gezi-harcama-v20";
+const CACHE = "gezi-harcama-v21";
 const SHELL = ["./", "index.html", "manifest.webmanifest", "icon-180.png", "icon-512.png", "couple1.png", "logo.png"];
 
 self.addEventListener("install", (e) => {
@@ -15,18 +15,25 @@ self.addEventListener("activate", (e) => {
   self.clients.claim();
 });
 
-// Uygulama kabuğu: önce ağ (tarayıcı önbelleğini atlayıp sunucuya sorarak),
-// olmazsa önbellek. API istekleri sw'ye takılmaz.
+// Uygulama kabuğu: ÖNBELLEK-ÖNCELİKLİ (stale-while-revalidate).
+// Önbellekte varsa anında onu döndür (hızlı açılış), bu sırada arka planda
+// güncel sürümü indirip önbelleği tazele → güncellemeler bir sonraki açılışta gelir.
+// API istekleri (Supabase, kur) sw'ye takılmaz; onlar her zaman ağdan.
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
-  if (url.origin !== location.origin) return;
+  if (url.origin !== location.origin || e.request.method !== "GET") return;
   e.respondWith(
-    fetch(e.request, { cache: "no-cache" })
-      .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(e.request, copy));
-        return res;
-      })
-      .catch(() => caches.match(e.request).then((r) => r || caches.match("index.html")))
+    caches.match(e.request).then((cached) => {
+      const network = fetch(e.request)
+        .then((res) => {
+          if (res && res.status === 200) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(e.request, copy));
+          }
+          return res;
+        })
+        .catch(() => cached || caches.match("index.html"));
+      return cached || network; // önbellekte varsa anında; yoksa ağı bekle
+    })
   );
 });
